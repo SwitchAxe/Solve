@@ -8,5 +8,5 @@ mathematica with no ambitions.
 - [ ] Basic function composition for building arbitrarily complex
   polynomials (and more) from standard functions (*, /, +, -) to
   name just a few important ones.
-- Simple calculus operators like derivatives, limits, integrals and
+- [ ] Simple calculus operators like derivatives, limits, integrals and
   so on.
