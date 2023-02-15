@@ -43,6 +43,6 @@ State dispatch_numeric(State st);
 
 State dispatch(char ch, State st = State::Start);
 
-std::vector<std::string> tokens(std::string input); 
+std::vector<std::tuple<std::string, State>> tokens(std::string input);
 } // namespace lexer
 } // namespace solve

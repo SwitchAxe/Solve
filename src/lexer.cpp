@@ -1,4 +1,5 @@
 #include "lexer.hpp"
+#include "bits/ranges_base.h"
 
 bool solve::lexer::ignore_whitespace(char ch) {
   if (!isgraph(ch))
@@ -120,9 +121,11 @@ State solve::lexer::dispatch(char ch, State st) {
   return State::Error;
 }
 
-std::vector<std::string> solve::lexer::tokens(std::string input) {
-  // string -> view (range) -> transform into tokens (range) ->
-  // take-while based on a lexer function -> accumulate into a vector
+std::vector<std::tuple<std::string, State>>
+solve::lexer::tokens(std::string input) {
+  // string -> view (range) -> transform into <tokens, states> (range) ->
+  // accumulate based on the state component -> filter empty vectors ->
+  // accumulate into a vector
   static const std::string enum_values[] = {"Identifier", "Integer", "Real",
                                             "Argument",   "End",     "Start",
                                             "Error",      "Comma",   "Dot"};
@@ -135,42 +138,52 @@ std::vector<std::string> solve::lexer::tokens(std::string input) {
       }) |
       utils::to<std::vector<std::tuple<char, State>>>();
 
-  auto tpstovec = tps |
-                  std::views::transform(
-                      [](std::tuple<char, State> tp) -> std::vector<char> {
-                        static State reduced = State::Start;
-                        static std::vector<char> accum;
-                        if (std::get<0>(tp) == ' ') {
-                          reduced = std::get<1>(tp);
-                          auto returned = accum;
-                          accum = {};
-                          return returned;
-                        }
-                        if (std::get<1>(tp) == reduced) {
-                          accum.push_back(std::get<0>(tp));
-                          return {};
-                        }
-                        // special case for the last token of an expression,
-                        // marked with State::End.
-                        // we want to collect that too:
-                        if (std::get<1>(tp) == State::End) {
-                          auto returned = std::vector<char>{std::get<0>(tp)};
-                          accum = {};
-                          reduced = std::get<1>(tp);
-                          return returned;
-                        }
-                        reduced = std::get<1>(tp);
-                        auto returned = accum;
-                        accum = {std::get<0>(tp)};
-                        return returned;
-                      }) |
-                  utils::to<std::vector<std::vector<char>>>();
+  auto tpstovec =
+      tps |
+      std::views::transform([](std::tuple<char, State> tp)
+                                -> std::vector<std::tuple<char, State>> {
+        static State reduced = State::Start;
+        static std::vector<std::tuple<char, State>> accum;
+        if (std::get<0>(tp) == ' ') {
+          reduced = std::get<1>(tp);
+          auto returned = accum;
+          accum = {};
+          return returned;
+        }
+        if (std::get<1>(tp) == reduced) {
+          accum.push_back(tp);
+          return {};
+        }
+        // special case for the last token of an expression,
+        // marked with State::End.
+        // we want to collect that too:
+        if (std::get<1>(tp) == State::End) {
+          auto returned = std::vector<std::tuple<char, State>>{tp};
+          accum = {};
+          reduced = std::get<1>(tp);
+          return returned;
+        }
+        reduced = std::get<1>(tp);
+        auto returned = accum;
+        accum = {tp};
+        return returned;
+      }) |
+      utils::to<std::vector<std::vector<std::tuple<char, State>>>>();
   auto filteredvec =
-      tpstovec | std::views::filter(
-                     [](std::vector<char> v) -> bool { return !v.empty(); });
-  auto stringvec = filteredvec | std::views::transform(
-                                     [](std::vector<char> v) -> std::string {
-                                       return std::string(v.begin(), v.end());
-                                     });
-  return (stringvec | utils::to<std::vector<std::string>>());
+      tpstovec |
+      std::views::filter([](std::vector<std::tuple<char, State>> v) -> bool {
+        return !v.empty();
+      });
+  auto stringvec =
+      filteredvec |
+      std::views::transform([](std::vector<std::tuple<char, State>> v)
+                                -> std::tuple<std::string, State> {
+        auto chars =
+            v | std::views::transform([](std::tuple<char, State> tp) -> char {
+              return std::get<0>(tp);
+            }) |
+            utils::to<std::vector<char>>();
+        return {std::string(chars.begin(), chars.end()), std::get<1>(v[0])};
+      });
+  return (stringvec | utils::to<std::vector<std::tuple<std::string, State>>>());
 }
