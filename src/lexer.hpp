@@ -24,7 +24,9 @@ enum State {
   Start,
   Error,
   Comma,
-  Dot
+  Dot,
+  Lparen,
+  Rparen,
 };
 
 State dispatch_right_delimiter(State st);

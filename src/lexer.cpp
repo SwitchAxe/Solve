@@ -1,6 +1,6 @@
 #include "lexer.hpp"
 #include "bits/ranges_base.h"
-
+#include <iostream>
 bool solve::lexer::ignore_whitespace(char ch) {
   if (!isgraph(ch))
     return true;
@@ -33,15 +33,19 @@ using State = solve::lexer::State;
 State solve::lexer::dispatch_right_delimiter(State st) {
   if ((st == State::Argument) || (st == State::Real) ||
       (st == State::Integer) || (st == State::End)) {
-    return State::End;
+    return State::Rparen;
   }
+  if (st == State::Lparen)
+    return State::Rparen;
+  if (st == State::Rparen)
+    return State::Rparen;
   return State::Error;
 }
 
 State solve::lexer::dispatch_left_delimiter(State st) {
   if ((st == State::Identifier) || (st == State::Comma) ||
       (st == State::Start) || (st == State::Argument)) {
-    return State::Argument;
+    return State::Lparen;
   }
   return State::Error;
 }
@@ -51,6 +55,10 @@ State solve::lexer::dispatch_whitespace(State st) {
       (st == State::Integer)) {
     return State::Argument;
   }
+  if (st == State::Lparen)
+    return State::Argument;
+  if (st == State::Rparen)
+    return State::Argument;
   if (st == State::Start)
     return State::Start;
   if (st == State::Identifier)
@@ -66,6 +74,8 @@ State solve::lexer::dispatch_alpha(State st) {
     return State::Identifier;
   if (st == State::Start)
     return State::Identifier;
+  if (st == State::Lparen)
+    return State::Identifier;
   if (st == State::Integer)
     return State::Argument;
   return State::Error;
@@ -77,6 +87,8 @@ State solve::lexer::dispatch_comma(State st) {
   if (st == State::Real)
     return State::Comma;
   if (st == State::Argument)
+    return State::Comma;
+  if (st == State::Rparen)
     return State::Comma;
   return State::Error;
 }
@@ -99,6 +111,8 @@ State solve::lexer::dispatch_numeric(State st) {
   if (st == State::Real)
     return State::Real;
   if (st == State::Argument)
+    return State::Integer;
+  if (st == State::Lparen)
     return State::Integer;
   return State::Error;
 }
@@ -126,9 +140,6 @@ solve::lexer::tokens(std::string input) {
   // string -> view (range) -> transform into <tokens, states> (range) ->
   // accumulate based on the state component -> filter empty vectors ->
   // accumulate into a vector
-  static const std::string enum_values[] = {"Identifier", "Integer", "Real",
-                                            "Argument",   "End",     "Start",
-                                            "Error",      "Comma",   "Dot"};
   State cur = State::Start;
   auto tps =
       input |
@@ -137,53 +148,47 @@ solve::lexer::tokens(std::string input) {
         return tp;
       }) |
       utils::to<std::vector<std::tuple<char, State>>>();
-
+  // push back a sentinel to let us know when we're at the last element of the
+  // vector.
+  tps.push_back(std::make_tuple('A', State::End));
   auto tpstovec =
       tps |
-      std::views::transform([](std::tuple<char, State> tp)
-                                -> std::vector<std::tuple<char, State>> {
-        static State reduced = State::Start;
-        static std::vector<std::tuple<char, State>> accum;
-        if (std::get<0>(tp) == ' ') {
-          reduced = std::get<1>(tp);
-          auto returned = accum;
-          accum = {};
-          return returned;
-        }
-        if (std::get<1>(tp) == reduced) {
-          accum.push_back(tp);
-          return {};
-        }
-        // special case for the last token of an expression,
-        // marked with State::End.
-        // we want to collect that too:
-        if (std::get<1>(tp) == State::End) {
-          auto returned = std::vector<std::tuple<char, State>>{tp};
-          accum = {};
-          reduced = std::get<1>(tp);
-          return returned;
-        }
-        reduced = std::get<1>(tp);
-        auto returned = accum;
-        accum = {tp};
-        return returned;
-      }) |
-      utils::to<std::vector<std::vector<std::tuple<char, State>>>>();
+      std::views::transform(
+          [](std::tuple<char, State> tp) -> std::tuple<std::string, State> {
+            static std::string res;
+            static State reduced = std::get<1>(tp);
+            if (std::get<1>(tp) == State::End) {
+              return std::make_tuple(res, reduced);
+            }
+            if (std::get<0>(tp) == ' ') {
+              auto ret = std::make_tuple(res, reduced);
+              res = "";
+              return ret;
+            }
+            if (std::get<1>(tp) == reduced) {
+              if (reduced == State::Rparen) {
+                return {res, reduced};
+              }
+              res += std::string{std::get<0>(tp)};
+              return {"", reduced};
+            }
+            if (std::get<1>(tp) == State::Rparen) {
+              auto ret = make_tuple(res, reduced);
+              res = std::string{std::get<0>(tp)};
+              return ret;
+            }
+            auto ret = make_tuple(res, reduced);
+            reduced = std::get<1>(tp);
+            res = std::string{std::get<0>(tp)};
+            return ret;
+          }) |
+      utils::to<std::vector<std::tuple<std::string, State>>>();
   auto filteredvec =
       tpstovec |
-      std::views::filter([](std::vector<std::tuple<char, State>> v) -> bool {
-        return !v.empty();
-      });
-  auto stringvec =
-      filteredvec |
-      std::views::transform([](std::vector<std::tuple<char, State>> v)
-                                -> std::tuple<std::string, State> {
-        auto chars =
-            v | std::views::transform([](std::tuple<char, State> tp) -> char {
-              return std::get<0>(tp);
-            }) |
-            utils::to<std::vector<char>>();
-        return {std::string(chars.begin(), chars.end()), std::get<1>(v[0])};
-      });
-  return (stringvec | utils::to<std::vector<std::tuple<std::string, State>>>());
+      std::views::filter([](std::tuple<std::string, State> tp) -> bool {
+        return !(std::get<0>(tp)).empty();
+      }) |
+      utils::to<std::vector<std::tuple<std::string, State>>>();
+
+  return filteredvec;
 }
