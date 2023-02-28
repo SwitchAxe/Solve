@@ -175,6 +175,7 @@ solve::lexer::tokens(std::string input) {
             if (std::get<1>(tp) == State::Rparen) {
               auto ret = make_tuple(res, reduced);
               res = std::string{std::get<0>(tp)};
+              reduced = std::get<1>(tp);
               return ret;
             }
             auto ret = make_tuple(res, reduced);
