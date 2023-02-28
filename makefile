@@ -3,7 +3,7 @@
 
 # compiler settings
 CXX      = g++
-CXXFLAGS = -Wall -std=c++20 -Isrc
+CXXFLAGS = -std=c++20 -Isrc -Wno-psabi
 
 # directories
 OUT_DIR = bin
@@ -36,8 +36,9 @@ build: dir ${OBJ} ${BIN}
 
 # rules
 
-${OBJ}: ${SRC} 
+${OBJ_DIR}/%.o: ${SRC_DIR}/%.cpp 
 	${CXX} ${CXXFLAGS} -c $< -o $@
-${BIN}: ${EXMPL} ${OBJ}
+
+${OUT_DIR}/%: ${EXMPL_DIR}/%.cpp ${OBJ}
 	${CXX} ${CXXFLAGS} $< ${OBJ} -o $@
 
